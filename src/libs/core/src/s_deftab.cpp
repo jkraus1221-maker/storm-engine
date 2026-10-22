@@ -11,6 +11,7 @@ S_DEFTAB::S_DEFTAB()
     for (uint32_t n = 0; n < DTHASHT_SIZE; n++)
     {
         HashLine[n].nNumElements = 0;
+        HashLine[n].pElements.reserve(64);
     }
 }
 
@@ -160,7 +161,7 @@ uint32_t S_DEFTAB::FindDef(const char *def_name)
     const auto hash = MakeHashValue(def_name);
 
     const auto hash_index = DTMAKEHASHINDEX(hash);
-    for (uint32_t n = 0; n < HashLine[hash_index].nNumElements; n++)
+    for (uint32_t n = 0; n < HashLine[hash_index].pElements.size(); n++)
     {
         const auto ni = HashLine[hash_index].pElements[n];
         if (pTable[ni].hash == hash) // return n;
@@ -181,23 +182,22 @@ void S_DEFTAB::UpdateHashTable(uint32_t code, uint32_t hash, bool in)
 {
     const uint32_t hash_index = DTMAKEHASHINDEX(hash);
 
-    for (uint32_t n = 0; n < HashLine[hash_index].nNumElements; n++)
+    for (uint32_t n = 0; n < HashLine[hash_index].pElements.size(); n++)
     {
         if (HashLine[hash_index].pElements[n] != code)
             continue;
         if (!in)
         {
             // take element out of list
-            HashLine[hash_index].pElements[n] = HashLine[hash_index].pElements[HashLine[hash_index].nNumElements - 1];
-            HashLine[hash_index].nNumElements--;
-            HashLine[hash_index].pElements.resize(HashLine[hash_index].nNumElements);
+            HashLine[hash_index].pElements[n] = HashLine[hash_index].pElements.back();
+            HashLine[hash_index].pElements.pop_back();
+            HashLine[hash_index].nNumElements = static_cast<uint32_t>(HashLine[hash_index].pElements.size());
             return;
         }
         return;
         // ok, already in list (? possible)
     }
     // not in list - add
-    HashLine[hash_index].nNumElements++;
-    HashLine[hash_index].pElements.resize(HashLine[hash_index].nNumElements);
-    HashLine[hash_index].pElements[HashLine[hash_index].nNumElements - 1] = code;
+    HashLine[hash_index].pElements.push_back(code);
+    HashLine[hash_index].nNumElements = static_cast<uint32_t>(HashLine[hash_index].pElements.size());
 }

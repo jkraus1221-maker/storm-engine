@@ -50,7 +50,7 @@ double MESSAGE::Double()
 uintptr_t MESSAGE::Pointer()
 {
     ValidateFormat('p');
-    return get<uintptr_t>(params_[index - 1]);
+    return static_cast<uintptr_t>(get<entid_t>(params_[index - 1]));
 }
 
 ATTRIBUTES * MESSAGE::AttributePointer()
@@ -93,7 +93,7 @@ bool MESSAGE::Set(int32_t value)
 bool MESSAGE::Set(uintptr_t value)
 {
     ValidateFormat('p');
-    params_[index - 1] = value;
+    params_[index - 1] = static_cast<entid_t>(value);
     return true;
 }
 
@@ -182,9 +182,9 @@ storm::MessageParam MESSAGE::GetParamValue(const char c, va_list&args)
     switch (c)
     {
     case 'b':
-        return va_arg(args, uint8_t);
+        return static_cast<uint8_t>(va_arg(args, int));
     case 'w':
-        return va_arg(args, uint16_t);
+        return static_cast<uint16_t>(va_arg(args, int));
     case 'l':
         return va_arg(args, int32_t);
     case 'u':
@@ -194,7 +194,7 @@ storm::MessageParam MESSAGE::GetParamValue(const char c, va_list&args)
     case 'd':
         return va_arg(args, double);
     case 'p':
-        return va_arg(args, uintptr_t);
+        return static_cast<entid_t>(va_arg(args, uintptr_t));
     case 'a':
         return va_arg(args, ATTRIBUTES *);
     case 'i':

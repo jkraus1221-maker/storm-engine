@@ -1117,6 +1117,8 @@ S_TOKEN_TYPE TOKEN::ProcessToken(char *&pointer, bool bKeepData)
         do
         {
             sym = *Program;
+            if (sym == 0)
+                break;
             Program += utf8::u8_inc(Program);
             if (sym == '\r' || sym == '\n')
             {

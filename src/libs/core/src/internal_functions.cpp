@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "core_impl.h"
 #include "debug-trap.h"
+#include "legacy_layers.hpp"
 
 #include <execution>
 
@@ -102,6 +103,8 @@ enum FUNCTION_CODE
     FUNC_GETENTITY,
     FUNC_FINDENTITY,
     FUNC_FINDENTITYNEXT,
+    FUNC_FINDCLASS,
+    FUNC_FINDCLASSNEXT,
     FUNC_GETSYMBOL,
     FUNC_ISDIGIT,
     FUNC_SAVEVARIABLE,
@@ -113,6 +116,7 @@ enum FUNCTION_CODE
     FUNC_CHECKFUNCTION,
     FUNC_GETENGINEVERSION,
     FUNC_SORT,
+    FUNC_LAYER_CREATE,
 };
 
 INTFUNCDESC IntFuncTable[] = {
@@ -142,10 +146,11 @@ INTFUNCDESC IntFuncTable[] = {
     VAR_INTEGER, 2, "or", VAR_INTEGER, 1, "DeleteEntitiesByType", TVOID, 1, "CreateControl", VAR_INTEGER, 1,
     "DeleteControl", TVOID, 2, "MapControl", TVOID, 2, "SetControlFlags", TVOID, 1, "ClearEntityAP", TVOID, 1,
     "GetArraySize", VAR_INTEGER, 0, "GetTargetPlatform", VAR_STRING, 2, "GetEntity", VAR_INTEGER, 2, "FindEntity",
-    VAR_INTEGER, 1, "FindEntityNext", VAR_INTEGER, 2, "GetSymbol", VAR_STRING, 2, "IsDigit", VAR_INTEGER, 2,
-    "SaveVariable", VAR_INTEGER, 2, "LoadVariable", VAR_INTEGER, 2, "SetControlTreshold", TVOID, 2, "LockControl",
+    VAR_INTEGER, 1, "FindEntityNext", VAR_INTEGER, 2, "FindClass", VAR_INTEGER, 1, "FindClassNext", VAR_INTEGER, 2,
+    "GetSymbol", VAR_STRING, 2, "IsDigit", VAR_INTEGER, 2, "SaveVariable", VAR_INTEGER, 2, "LoadVariable", VAR_INTEGER, 2,
+    "SetControlTreshold", TVOID, 2, "LockControl",
     TVOID, 1, "TestRef", VAR_INTEGER, 1, "SetTimeScale", TVOID, 1, "CheckFunction", VAR_INTEGER, 0, "GetEngineVersion",
-    VAR_INTEGER, 1, "sort", TVOID};
+    VAR_INTEGER, 1, "sort", TVOID, 2, "LayerCreate", TVOID};
 
 /*
 char * FuncNameTable[]=
@@ -367,6 +372,8 @@ bool COMPILER::IsIntFuncVarArgsNum(uint32_t code)
     case FUNC_SEND_MESSAGE:
     case FUNC_EVENT:
     case FUNC_POSTEVENT:
+    case FUNC_LAYER_SET_REALIZE:
+    case FUNC_LAYER_SET_EXECUTE:
 
         return true;
     }
@@ -720,6 +727,7 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         return pV;
 
     case FUNC_FINDENTITY:
+    case FUNC_FINDCLASS:
         pV = SStack.Pop();
         if (!pV)
         {
@@ -764,6 +772,7 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         return pV;
 
     case FUNC_FINDENTITYNEXT:
+    case FUNC_FINDCLASSNEXT:
         pV2 = SStack.Pop();
         if (!pV2)
         {
@@ -1387,61 +1396,51 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         pVResult = pV;
         return pV;
 
-        /*case FUNC_LAYER_CREATE:
-
-            pV2 = SStack.Pop(); if(!pV2){SetError(INVALID_FA);break;};
-            pV = SStack.Pop(); if(!pV){SetError(INVALID_FA);break;};
-            pV->Get(pChar);
-            pV2->Get(TempLong1);
-      if(TempLong1 == 0) //core_internal.LayerCreate(pChar,false,false);
-      else //core_internal.LayerCreate(pChar,true,false);
-        break;*/
-        /*case FUNC_LAYER_DELETE:
-            pV = SStack.Pop(); if(!pV) {SetError(INVALID_FA); break;};
-            pV->Get(pChar);
-      core_internal.LayerDelete(pChar);
+    case FUNC_LAYER_CREATE:
+        pV2 = SStack.Pop();
+        pV = SStack.Pop();
+        if (!pV || !pV2) { SetError(INVALID_FA); break; }
+        pV2->Get(TempLong1);
+        core.SetLayerOrdered(ScriptLayerIndex(pV), TempLong1 != 0);
+        core.SetLayerFrozen(ScriptLayerIndex(pV), false);
         break;
-        case FUNC_LAYER_DELETE_CONTENT:
-            pV = SStack.Pop(); if(!pV) {SetError(INVALID_FA); break;};
-            pV->Get(pChar);
-      core_internal.LayerDeleteContent(pChar);*/
+    case FUNC_LAYER_DELETE_CONTENT: {
+        pV = SStack.Pop();
+        if (!pV) { SetError(INVALID_FA); break; }
+        auto entities = core.GetEntityIds(ScriptLayerIndex(pV));
+        for (auto id : entities) core.EraseEntity(id);
         break;
+    }
     case FUNC_LAYER_SET_REALIZE:
-        // pV2 = SStack.Pop(); if(!pV2){SetError(INVALID_FA);break;};
+    case FUNC_LAYER_SET_EXECUTE: {
+        int32_t enabled = 1;
+        if (arguments == 2) {
+            pV2 = SStack.Pop();
+            if (!pV2 || !pV2->Get(enabled)) { SetError(INVALID_FA); break; }
+        } else if (arguments != 1) { SetError(INVALID_FA); break; }
+        pV = SStack.Pop();
+        if (!pV) { SetError(INVALID_FA); break; }
+        const auto type = enabled ? (func_code == FUNC_LAYER_SET_REALIZE ? layer_type_t::realize : layer_type_t::execute) : layer_type_t::common;
+        core.SetLayerType(ScriptLayerIndex(pV), type);
+        break;
+    }
+    case FUNC_LAYER_SET_MESSAGES: {
+        pV2 = SStack.Pop();
+        if (!pV2)
+        {
+            SetError(INVALID_FA);
+            break;
+        }
         pV = SStack.Pop();
         if (!pV)
         {
             SetError(INVALID_FA);
             break;
         }
-        pV->Get(TempLong1);
-        // pV2->Get(TempLong1);
-        // if(TempLong1 == 0) core_internal.LayerSetRealize(pChar,false);
-        // else core_internal.LayerSetRealize(pChar,true);
-        core.SetLayerType(TempLong1, layer_type_t::realize);
+        pV2->Get(TempLong1);
+        core.SetLayerMessages(ScriptLayerIndex(pV), TempLong1 != 0);
         break;
-    case FUNC_LAYER_SET_EXECUTE:
-        // pV2 = SStack.Pop(); if(!pV2){SetError(INVALID_FA);break;};
-        pV = SStack.Pop();
-        if (!pV)
-        {
-            SetError(INVALID_FA);
-            break;
-        }
-        pV->Get(TempLong1);
-        // pV2->Get(TempLong1);
-        // if(TempLong1 == 0) core_internal.LayerSetExecute(pChar,false);
-        // else core_internal.LayerSetExecute(pChar,true);
-        core.SetLayerType(TempLong1, layer_type_t::execute);
-        break;
-        /*case FUNC_LAYER_SET_MESSAGES:
-            pV2 = SStack.Pop(); if(!pV2){SetError(INVALID_FA);break;};
-            pV = SStack.Pop(); if(!pV){SetError(INVALID_FA);break;};
-            pV->Get(pChar);
-            pV2->Get(TempLong1);
-      if(TempLong1 == 0) core_internal.LayerClrFlags(pChar,LRFLAG_SYS_MESSAGES);
-      else core_internal.LayerSetFlags(pChar,LRFLAG_SYS_MESSAGES);
-        break;*/
+    }
     case FUNC_LAYER_ADDOBJECT:
         pV3 = SStack.Pop();
         if (!pV3)
@@ -1461,7 +1460,7 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
             SetError(INVALID_FA);
             break;
         }
-        pV->Get(TempLong2);
+        TempLong2 = ScriptLayerIndex(pV);
         pV2->Get(TempEid);
         pV3->Get(TempLong1);
         core.AddToLayer(TempLong2, TempEid, TempLong1);
@@ -1479,7 +1478,7 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
             SetError(INVALID_FA);
             break;
         }
-        pV->Get(TempLong2);
+        TempLong2 = ScriptLayerIndex(pV);
         pV2->Get(TempEid);
         core.RemoveFromLayer(TempLong2, TempEid);
         break;
@@ -1496,7 +1495,7 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
             SetError(INVALID_FA);
             break;
         }
-        pV->Get(TempLong2);
+        TempLong2 = ScriptLayerIndex(pV);
         pV2->Get(TempLong1);
         core.SetLayerFrozen(TempLong2, TempLong1);
         break;
@@ -2564,7 +2563,7 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         }
         pA = pV->GetAClass();
 
-        std::sort(std::execution::seq, std::begin(pA->attributes_), std::end(pA->attributes_),
+        std::sort(std::begin(pA->attributes_), std::end(pA->attributes_),
                   [](const std::unique_ptr<ATTRIBUTES> &lhs, const std::unique_ptr<ATTRIBUTES> &rhs) {
                       return strcmp(lhs->GetThisName(), rhs->GetThisName()) < 0;
                   });

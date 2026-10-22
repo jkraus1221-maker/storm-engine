@@ -1002,6 +1002,11 @@ void CoreImpl::SetLayerFrozen(layer_index_t index, bool freeze)
     entity_manager_.SetLayerFrozen(index, freeze);
 }
 
+void CoreImpl::SetLayerMessages(layer_index_t index, bool enabled)
+{
+    entity_manager_.SetLayerMessages(index, enabled);
+}
+
 void CoreImpl::RemoveFromLayer(layer_index_t index, entid_t id)
 {
     entity_manager_.RemoveFromLayer(index, id);
@@ -1015,6 +1020,21 @@ hash_t CoreImpl::GetClassCode(entid_t id) const
 bool CoreImpl::IsLayerFrozen(layer_index_t index) const
 {
     return entity_manager_.IsLayerFrozen(index);
+}
+
+bool CoreImpl::IsLayerMessagesEnabled(layer_index_t index) const
+{
+    return entity_manager_.IsLayerMessagesEnabled(index);
+}
+
+bool CoreImpl::IsLayerOrdered(layer_index_t index) const
+{
+    return entity_manager_.IsLayerOrdered(index);
+}
+
+void CoreImpl::SetLayerOrdered(layer_index_t index, bool ordered)
+{
+    entity_manager_.SetLayerOrdered(index, ordered);
 }
 
 void CoreImpl::ForEachEntity(const std::function<void(entptr_t)> &f)

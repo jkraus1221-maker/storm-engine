@@ -3,7 +3,10 @@
 #include <cstdint>
 #include <cmath>
 
+#include <limits>
+#if defined(__i386__) || defined(__x86_64__)
 #include <xmmintrin.h>
+#endif
 
 #include "c_vector.h"
 
@@ -136,5 +139,14 @@ inline bool IntersectLines2D(const CVECTOR &v1, const CVECTOR &v2, const CVECTOR
 
 inline int ftoi(float f)
 {
+#if defined(__i386__) || defined(__x86_64__)
     return _mm_cvt_ss2si(_mm_load_ss(&f));
+#else
+    // Match CVTSS2SI's current-rounding-mode behavior and invalid sentinel.
+    const double rounded = std::nearbyint(static_cast<double>(f));
+    if (!std::isfinite(rounded) || rounded < std::numeric_limits<int32_t>::min() ||
+        rounded > std::numeric_limits<int32_t>::max())
+        return std::numeric_limits<int32_t>::min();
+    return static_cast<int32_t>(rounded);
+#endif
 }

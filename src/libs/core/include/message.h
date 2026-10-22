@@ -19,6 +19,8 @@ namespace detail {
 template<typename T>
 MessageParam convertMessageParam(T value)
 {
+    if constexpr (std::is_same_v<T, uintptr_t>)
+        return MessageParam(static_cast<entid_t>(value));
     return MessageParam(value);
 }
 

@@ -435,7 +435,11 @@ std::string convert_path(const char *path)
 
 void FILE_SERVICE::AddEntryToResourcePaths(const std::filesystem::directory_entry &entry, std::string &CheckingPath)
 {
-    if (entry.is_regular_file() || entry.is_directory())
+    std::error_code status_error;
+    const auto status = entry.symlink_status(status_error);
+    if (status_error || (!std::filesystem::is_regular_file(status) && !std::filesystem::is_directory(status)))
+        return;
+
     {
         std::string path = get_dir_iterator_path(entry.path());
         std::string path_lwr = convert_path(path.c_str());
@@ -458,16 +462,28 @@ void FILE_SERVICE::ScanResourcePaths()
     }
     ResourcePaths.clear();
     std::string ExePath = "";
-    for (const auto &entry : std::filesystem::recursive_directory_iterator("."))
+    std::error_code iterator_error;
+    std::filesystem::recursive_directory_iterator current(
+        ".", std::filesystem::directory_options::skip_permission_denied, iterator_error);
+    const std::filesystem::recursive_directory_iterator end;
+    while (current != end)
     {
-        AddEntryToResourcePaths(entry, ExePath);
+        if (!iterator_error)
+            AddEntryToResourcePaths(*current, ExePath);
+        iterator_error.clear();
+        current.increment(iterator_error);
     }
     ExePath = fio->_GetExecutableDirectory();
-    auto it = std::filesystem::recursive_directory_iterator(ExePath);
+    iterator_error.clear();
+    auto it = std::filesystem::recursive_directory_iterator(
+        ExePath, std::filesystem::directory_options::skip_permission_denied, iterator_error);
     std::ranges::for_each(ExePath, [](char &c) { c = std::tolower(c); });
-    for (const auto &entry : it)
+    while (it != end)
     {
-        AddEntryToResourcePaths(entry, ExePath);
+        if (!iterator_error)
+            AddEntryToResourcePaths(*it, ExePath);
+        iterator_error.clear();
+        it.increment(iterator_error);
     }
 #endif
     ResourcePathsFirstScan = false;

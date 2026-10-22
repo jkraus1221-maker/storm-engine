@@ -23,6 +23,8 @@ class EntityManager final
     bool IsEntityValid(entid_t id) const;
     layer_type_t GetLayerType(layer_index_t index) const;
     bool IsLayerFrozen(layer_index_t index) const;
+    bool IsLayerMessagesEnabled(layer_index_t index) const;
+    bool IsLayerOrdered(layer_index_t index) const;
 
     void AddToLayer(layer_index_t layer_idx, entid_t entity_id, priority_t priority); // no bounds check
     void RemoveFromLayer(layer_index_t layer_idx, entid_t entity_id);                 // no bounds check
@@ -31,6 +33,8 @@ class EntityManager final
     void EraseAll();
     void SetLayerType(layer_index_t index, layer_type_t type);
     void SetLayerFrozen(layer_index_t index, bool freeze);
+    void SetLayerMessages(layer_index_t index, bool enabled);
+    void SetLayerOrdered(layer_index_t index, bool ordered);
     void NewLifecycle();
     void ForEachEntity(const std::function<void(entptr_t)> &f);
 
@@ -68,6 +72,8 @@ class EntityManager final
 
         layer_type_t type;
         bool frozen;
+        bool messages_enabled;
+        bool ordered = true;
     };
 
     static bool EntIdxValid(size_t idx);

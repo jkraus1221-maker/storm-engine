@@ -126,9 +126,13 @@ class Core
     virtual entity_container_cref GetEntityIds(const char *name) const = 0;
     virtual void SetLayerType(layer_index_t index, layer_type_t type) = 0;
     virtual void SetLayerFrozen(layer_index_t index, bool freeze) = 0;
+    virtual void SetLayerMessages(layer_index_t index, bool enabled) = 0;
     virtual void RemoveFromLayer(layer_index_t index, entid_t id) = 0;
     virtual hash_t GetClassCode(entid_t id) const = 0;
     virtual bool IsLayerFrozen(layer_index_t index) const = 0;
+    virtual bool IsLayerMessagesEnabled(layer_index_t index) const = 0;
+    virtual bool IsLayerOrdered(layer_index_t index) const = 0;
+    virtual void SetLayerOrdered(layer_index_t index, bool ordered) = 0;
     virtual void ForEachEntity(const std::function<void(entptr_t)> &f) = 0;
 
     CONTROLS *Controls{};

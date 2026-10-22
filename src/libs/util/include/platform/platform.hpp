@@ -18,8 +18,16 @@ inline const char *convert_path_sep(const char *cPath)
 #include <cstdio>
 #include <cstring>
 
+#if defined(__APPLE__)
+// Script/debug key codes are data in the original engine's input contract.
+// The native core does not require Direct3D headers or a Windows runtime.
+inline constexpr int VK_BACK = 0x08;
+inline constexpr int VK_SHIFT = 0x10;
+inline constexpr int VK_F7 = 0x76;
+#else
 #include "d3dx9.hpp"
 #include "winuser.rh"
+#endif
 
 #undef EXTERN // fix for token.h:72:5: error: expected identifier EXTERN,
 

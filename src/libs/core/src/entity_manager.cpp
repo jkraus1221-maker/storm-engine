@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <numeric>
 #include <ranges>
 #include <type_traits>
 
@@ -64,7 +65,9 @@ void EntityManager::AddToLayer(const layer_index_t index, EntityInternalData &da
     // duplicate assert
     assert(std::ranges::find(entity_ids, data.id) == std::end(entity_ids));
 
-    const auto targetIdx = std::distance(std::begin(priorities), std::ranges::upper_bound(priorities, priority));
+    const auto targetIdx = layer.ordered
+                               ? std::distance(std::begin(priorities), std::ranges::upper_bound(priorities, priority))
+                               : std::ssize(priorities);
 
     priorities.insert(std::begin(priorities) + targetIdx, priority);
     entity_ids.insert(std::begin(entity_ids) + targetIdx, data.id);
@@ -85,11 +88,13 @@ void EntityManager::RemoveFromLayer(const layer_index_t index, EntityInternalDat
 
     const auto ssize = std::ssize(priorities);
 
-    const auto lowerIdx = std::distance(std::begin(priorities), std::ranges::lower_bound(priorities, priority));
+    const auto lowerIdx = layer.ordered
+                              ? std::distance(std::begin(priorities), std::ranges::lower_bound(priorities, priority))
+                              : 0;
     assert(lowerIdx < ssize);
 
     // look through this priority only
-    for (auto i = lowerIdx; i < ssize && priorities[i] == priority; ++i)
+    for (auto i = lowerIdx; i < ssize && (!layer.ordered || priorities[i] == priority); ++i)
     {
         if (entity_ids[i] == id)
         {
@@ -122,7 +127,7 @@ entid_t EntityManager::CreateEntity(const char *name, ATTRIBUTES *attr)
     }
     if (pClass == nullptr)
     {
-        throw std::runtime_error("invalid entity name");
+        throw std::runtime_error(std::string("invalid entity name: ") + name);
     }
 
     // Create entity
@@ -349,6 +354,58 @@ bool EntityManager::IsLayerFrozen(const layer_index_t index) const
     assert(index < kMaxLayerNum);
 
     return layers_[index].frozen;
+}
+
+bool EntityManager::IsLayerMessagesEnabled(const layer_index_t index) const
+{
+    assert(index < kMaxLayerNum);
+
+    return layers_[index].messages_enabled;
+}
+
+void EntityManager::SetLayerMessages(const layer_index_t index, const bool enabled)
+{
+    assert(index < kMaxLayerNum);
+
+    layers_[index].messages_enabled = enabled;
+}
+
+bool EntityManager::IsLayerOrdered(const layer_index_t index) const
+{
+    assert(index < kMaxLayerNum);
+
+    return layers_[index].ordered;
+}
+
+void EntityManager::SetLayerOrdered(const layer_index_t index, const bool ordered)
+{
+    assert(index < kMaxLayerNum);
+
+    auto &layer = layers_[index];
+    if (layer.ordered == ordered)
+        return;
+
+    layer.ordered = ordered;
+    if (ordered)
+    {
+        std::vector<size_t> order(layer.priorities.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::stable_sort(order.begin(), order.end(), [&](const size_t left, const size_t right) {
+            return layer.priorities[left] < layer.priorities[right];
+        });
+
+        std::vector<priority_t> priorities;
+        std::vector<entid_t> entity_ids;
+        priorities.reserve(order.size());
+        entity_ids.reserve(order.size());
+        for (const auto index : order)
+        {
+            priorities.push_back(layer.priorities[index]);
+            entity_ids.push_back(layer.entity_ids[index]);
+        }
+        layer.priorities = std::move(priorities);
+        layer.entity_ids = std::move(entity_ids);
+    }
 }
 
 void EntityManager::AddToLayer(layer_index_t layer_idx, entid_t entity_id, priority_t priority)

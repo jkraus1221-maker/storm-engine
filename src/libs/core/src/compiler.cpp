@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 
 #include <zlib.h>
 
@@ -39,6 +40,18 @@ S_DEBUG s_debug;
 
 namespace
 {
+template <typename T> T ReadUnaligned(const void *data)
+{
+    T value;
+    std::memcpy(&value, data, sizeof(value));
+    return value;
+}
+
+template <typename T> void WriteUnaligned(void *data, const T &value)
+{
+    std::memcpy(data, &value, sizeof(value));
+}
+
 enum CacheMode : int
 {
     kCacheDisabled = 0,             // Disable script caching
@@ -520,6 +533,13 @@ bool COMPILER::CreateProgram(const char *file_name)
         }
       }*/
     return bRes;
+}
+
+bool COMPILER::AddProgramFile(const char *file_name)
+{
+    if (file_name == nullptr)
+        return false;
+    return BC_LoadSegment(file_name);
 }
 
 bool COMPILER::Run()
@@ -1989,8 +2009,6 @@ bool COMPILER::Compile(SEGMENT_DESC &Segment, char *pInternalCode, uint32_t pInt
         delete[] Segment.pData;
         Segment.pData = nullptr;
     }
-    HANDLE fh;
-    uint32_t dwR;
     if (bWriteCodeFile)
     {
         auto fName = std::filesystem::path(Segment.name.c_str()).filename().string();
@@ -3230,12 +3248,12 @@ bool COMPILER::CompileBlock(SEGMENT_DESC &Segment, bool &bFunctionBlock, uint32_
             CompileToken(Segment,sttVarType,1,(char *)&dwRCode,sizeof(DWORD));*/
             /*            if(sttVarType == VARIABLE)
                   {
-                    if(!VarTab.GetVar(vi,*((uint32_t *)&pCodeBase[ip]))) { SetError("Global variable not found"); break;
+                    if(!VarTab.GetVar(vi,ReadUnaligned<uint32_t>(&pCodeBase[ip]))) { SetError("Global variable not found"); break;
                } pRef = vi.pDClass;
                   }
                   else
                   {
-                    pRef = SStack.Read(pRun_fi->stack_offset,*((uint32_t *)&pCodeBase[ip]));
+                    pRef = SStack.Read(pRun_fi->stack_offset,ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                     if(pRef == 0) { SetError("Local variable not found"); return false; }
                   }
             */
@@ -3676,7 +3694,7 @@ bool COMPILER::BC_CallFunction(uint32_t func_code, uint32_t &ip, DATA *&pVResult
         SetError("missing args_num token");
         return false;
     }
-    arguments = *((int32_t *)&pRunCodeBase[TLR_DataOffset]);
+    arguments = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]);
 
     check_sp = SStack.GetDataNum() - arguments;
     /*
@@ -4043,13 +4061,13 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
         case LOCAL_VARIABLE:
             pLeftOperandAClass = nullptr;            // reset attribute
             nLeftOperandIndex = INVALID_ARRAY_INDEX; // reset index
-            nLeftOperandCode = *((int32_t *)&pRunCodeBase[TLR_DataOffset]);
+            nLeftOperandCode = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]);
             bLeftOperandType = LOCAL_VARIABLE;
             break;
         case VARIABLE:
             pLeftOperandAClass = nullptr;            // reset attribute
             nLeftOperandIndex = INVALID_ARRAY_INDEX; // reset index
-            nLeftOperandCode = *((int32_t *)&pRunCodeBase[TLR_DataOffset]);
+            nLeftOperandCode = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]);
             bLeftOperandType = VARIABLE;
             break;
         case ACCESS_WORD_CODE:
@@ -4091,7 +4109,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                     return false;
                 }
                 pLeftOperandAClass =
-                    pLeftOperandAClass->VerifyAttributeClassByCode(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                    pLeftOperandAClass->VerifyAttributeClassByCode(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                 break;
             }
             if (pLeftOperandAClass == nullptr)
@@ -4124,7 +4142,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                 return false;
             }
             pLeftOperandAClass =
-                pLeftOperandAClass->VerifyAttributeClassByCode(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                    pLeftOperandAClass->VerifyAttributeClassByCode(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
             break;
             break;
         case ACCESS_WORD:
@@ -4238,7 +4256,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                 }
 
                 vtype = BC_TokenGet();
-                var_code = *((int32_t *)&pRunCodeBase[TLR_DataOffset]);
+                var_code = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]);
                 if (!(vtype == VARIABLE || vtype == LOCAL_VARIABLE))
                 {
                     SetError("invalid access var");
@@ -4301,7 +4319,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
             }
 
             vtype = BC_TokenGet();
-            var_code = *((int32_t *)&pRunCodeBase[TLR_DataOffset]);
+            var_code = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]);
             if (!(vtype == VARIABLE || vtype == LOCAL_VARIABLE))
             {
                 SetError("invalid access var");
@@ -4419,7 +4437,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
 
         case CALL:                                                  // undetermined function call
             vtype = BC_TokenGet();                                  // read variable
-            var_code = *((int32_t *)&pRunCodeBase[TLR_DataOffset]); // var code
+            var_code = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]); // var code
             if (vtype == VARIABLE)
             {
                 real_var = VarTab.GetVar(var_code);
@@ -4824,12 +4842,12 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
               Token_type = BC_TokenGet(ip,token_data_size);
               if(Token_type == VARIABLE)
               {
-                if(!VarTab.GetVar(vi,*((uint32_t *)&pCodeBase[ip]))) { SetError("Global variable not found"); break; }
+                if(!VarTab.GetVar(vi,ReadUnaligned<uint32_t>(&pCodeBase[ip]))) { SetError("Global variable not found"); break; }
                 pRef = vi.pDClass;
               }
               else
               {
-                pRef = SStack.Read(pRun_fi->stack_offset,*((uint32_t *)&pCodeBase[ip]));
+                pRef = SStack.Read(pRun_fi->stack_offset,ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if(pRef == 0) { SetError("Local variable not found"); return false; }
               }
               if(!pRef->IsReference()) { SetError("makeref to non reference variable"); return false; }
@@ -4839,12 +4857,12 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
               Token_type = BC_TokenGet(ip,token_data_size);
               if(Token_type == VARIABLE)
               {
-                if(!VarTab.GetVar(vi,*((uint32_t *)&pCodeBase[ip])))    { SetError("Global variable not found"); break;
+                if(!VarTab.GetVar(vi,ReadUnaligned<uint32_t>(&pCodeBase[ip])))    { SetError("Global variable not found"); break;
             } pVar = vi.pDClass;
               }
               else
               {
-                pVar = SStack.Read(pRun_fi->stack_offset,*((uint32_t *)&pCodeBase[ip]));
+                pVar = SStack.Read(pRun_fi->stack_offset,ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if(pVar == 0) { SetError("Local variable not found"); return false; }
               }
 
@@ -4869,12 +4887,12 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
               Token_type = BC_TokenGet(ip,token_data_size);
               if(Token_type == VARIABLE)
               {
-                if(!VarTab.GetVar(vi,*((uint32_t *)&pCodeBase[ip]))) { SetError("Global variable not found"); break; }
+                if(!VarTab.GetVar(vi,ReadUnaligned<uint32_t>(&pCodeBase[ip]))) { SetError("Global variable not found"); break; }
                 pRef = vi.pDClass;
               }
               else
               {
-                pRef = SStack.Read(pRun_fi->stack_offset,*((uint32_t *)&pCodeBase[ip]));
+                pRef = SStack.Read(pRun_fi->stack_offset,ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if(pRef == 0) { SetError("Local variable not found"); return false; }
               }
               if(!pRef->IsAReference()) { SetError("makeref to non A reference variable"); return false; }
@@ -4884,12 +4902,12 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
               Token_type = BC_TokenGet(ip,token_data_size);
               if(Token_type == VARIABLE)
               {
-                if(!VarTab.GetVar(vi,*((uint32_t *)&pCodeBase[ip])))    { SetError("Global variable not found"); break;
+                if(!VarTab.GetVar(vi,ReadUnaligned<uint32_t>(&pCodeBase[ip])))    { SetError("Global variable not found"); break;
             } pVar = vi.pDClass; if(pVar == 0) { SetError("Global variable not found"); return false; }
               }
               else
               {
-                pVar = SStack.Read(pRun_fi->stack_offset,*((uint32_t *)&pCodeBase[ip]));
+                pVar = SStack.Read(pRun_fi->stack_offset,ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if(pVar == 0) { SetError("Local variable not found"); return false; }
               }
 
@@ -4913,7 +4931,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
               {
                 if(TokenType() == ACCESS_WORD_CODE)
                 {
-                  pRoot = pRoot->VerifyAttributeClassByCode(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                  pRoot = pRoot->VerifyAttributeClassByCode(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                   // pRoot = pRoot->CreateSubAClass(pRoot,(char *)&pRunCodeBase[TLR_DataOffset]);
                 } else
                 if(TokenType() == ACCESS_WORD)
@@ -4923,7 +4941,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                 if(TokenType() == ACCESS_VAR)
                 {
                   vtype = BC_TokenGet();
-                  var_code = *((int32_t *)&pRunCodeBase[TLR_DataOffset]);
+                  var_code = ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]);
                   if(!(vtype == VARIABLE || vtype == LOCAL_VARIABLE)){SetError("invalid access var");return false;}
                   if(vtype == VARIABLE)
                   {
@@ -5117,7 +5135,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                 pVDst->SetType(VAR_REFERENCE);
                 break;
             case VARIABLE:
-                real_var = VarTab.GetVar(*((uint32_t *)&pCodeBase[ip]));
+                real_var = VarTab.GetVar(ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (real_var == nullptr)
                 {
                     SetError("Global variable not found");
@@ -5135,7 +5153,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                 }
                 break;
             case LOCAL_VARIABLE:
-                pVDst = SStack.Read(pRun_fi->stack_offset, *((uint32_t *)&pCodeBase[ip]));
+                pVDst = SStack.Read(pRun_fi->stack_offset, ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (pVDst == nullptr)
                 {
                     SetError("Local variable not found");
@@ -5165,7 +5183,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
             switch (Token_type)
             {
             case VARIABLE:
-                real_var = VarTab.GetVar(*((uint32_t *)&pCodeBase[ip]));
+                real_var = VarTab.GetVar(ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (real_var == nullptr)
                 {
                     SetError("Global variable not found");
@@ -5179,7 +5197,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                     return false;
                 break;
             case LOCAL_VARIABLE:
-                pVSrc = SStack.Read(pRun_fi->stack_offset, *((uint32_t *)&pCodeBase[ip]));
+                pVSrc = SStack.Read(pRun_fi->stack_offset, ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (pVSrc == nullptr)
                 {
                     SetError("Local variable not found");
@@ -5383,16 +5401,16 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
             switch (Token_type)
             {
             case NUMBER:
-                pV->Set(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                pV->Set(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                 break;
             case FLOAT_NUMBER:
-                pV->Set(*((float *)&pRunCodeBase[TLR_DataOffset]));
+                pV->Set(ReadUnaligned<float>(&pRunCodeBase[TLR_DataOffset]));
                 break;
             case STRING:
                 pV->Set((char *)&pRunCodeBase[TLR_DataOffset + 4]); // 4 - string length
                 break;
             case VARIABLE:
-                real_var = VarTab.GetVar(*((uint32_t *)&pCodeBase[ip]));
+                real_var = VarTab.GetVar(ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (real_var == nullptr)
                 {
                     SetError("Global variable not found");
@@ -5440,7 +5458,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
 
                 break;
             case LOCAL_VARIABLE:
-                pVar = SStack.Read(pRun_fi->stack_offset, *((uint32_t *)&pCodeBase[ip]));
+                pVar = SStack.Read(pRun_fi->stack_offset, ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (pVar == nullptr)
                 {
                     SetError("Local variable not found");
@@ -5525,7 +5543,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
             switch (Token_type)
             {
             case VARIABLE:
-                real_var = VarTab.GetVar(*((uint32_t *)&pCodeBase[ip]));
+                real_var = VarTab.GetVar(ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (real_var == nullptr)
                 {
                     SetError("Global variable not found");
@@ -5535,7 +5553,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                 real_var->value->Copy(pV);
                 break;
             case LOCAL_VARIABLE:
-                pVar = SStack.Read(pRun_fi->stack_offset, *((uint32_t *)&pCodeBase[ip]));
+                pVar = SStack.Read(pRun_fi->stack_offset, ReadUnaligned<uint32_t>(&pCodeBase[ip]));
                 if (pVar == nullptr)
                 {
                     SetError("Local variable not found");
@@ -5720,14 +5738,14 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
             {
             case ACCESS_WORD_CODE:
                 if (sttV == VERIFY_AP)
-                    rAP = rAP->VerifyAttributeClassByCode(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                    rAP = rAP->VerifyAttributeClassByCode(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                 else
-                    rAP = rAP->GetAttributeClassByCode(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                    rAP = rAP->GetAttributeClassByCode(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                 if (!rAP)
-                    SetError("missed attribute: %s", SCodec.Convert(*((int32_t *)&pRunCodeBase[TLR_DataOffset])));
+                    SetError("missed attribute: %s", SCodec.Convert(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset])));
                 break;
             case VARIABLE:
-                real_var = VarTab.GetVar(*((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                real_var = VarTab.GetVar(ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                 if (real_var == nullptr)
                 {
                     SetError("Global variable not found");
@@ -5755,7 +5773,7 @@ bool COMPILER::BC_Execute(uint32_t function_code, DATA *&pVReturnResult, const c
                     SetError("missed attribute: %s", pChar);
                 break;
             case LOCAL_VARIABLE:
-                pV = SStack.Read(pRun_fi->stack_offset, *((int32_t *)&pRunCodeBase[TLR_DataOffset]));
+                pV = SStack.Read(pRun_fi->stack_offset, ReadUnaligned<int32_t>(&pRunCodeBase[TLR_DataOffset]));
                 if (pV == nullptr)
                 {
                     SetError("Local variable not found");
@@ -6558,7 +6576,11 @@ void COMPILER::SaveVariable(DATA *pV, bool bdim)
         break;
     case VAR_AREFERENCE:
         pString = nullptr;
+#ifdef _WIN32
         __try
+#else
+        try
+#endif
         {
             pA = TraceARoot(pV->AttributesClass, pString);
         }
@@ -7198,7 +7220,7 @@ DATA *COMPILER::GetOperand(const char *pCodeBase, uint32_t &ip, S_TOKEN_TYPE *pT
         pVar = SStack.Read();
         return pVar;
     case VARIABLE:
-        real_var = VarTab.GetVar(*reinterpret_cast<const uint32_t *>(&pCodeBase[ip]));
+        real_var = VarTab.GetVar(ReadUnaligned<uint32_t>(&pCodeBase[ip]));
         if (real_var == nullptr)
         {
             SetError("Global variable not found");
@@ -7211,7 +7233,7 @@ DATA *COMPILER::GetOperand(const char *pCodeBase, uint32_t &ip, S_TOKEN_TYPE *pT
         }
         return real_var->value.get();
     case LOCAL_VARIABLE:
-        pVar = SStack.Read(pRun_fi->stack_offset, *reinterpret_cast<const uint32_t *>(&pCodeBase[ip]));
+        pVar = SStack.Read(pRun_fi->stack_offset, ReadUnaligned<uint32_t>(&pCodeBase[ip]));
         if (pVar == nullptr)
         {
             SetError("Local variable not found");
@@ -7461,8 +7483,7 @@ void COMPILER::LoadByteCodeFromCache(storm::script_cache::BufferReader &reader, 
     do
     {
         token_type = BC_TokenGet();
-        auto &relocated_data =
-            *const_cast<uint32_t *>(reinterpret_cast<const uint32_t *>(&pRunCodeBase[TLR_DataOffset]));
+        auto relocated_data = ReadUnaligned<uint32_t>(&pRunCodeBase[TLR_DataOffset]);
         if (token_type == ACCESS_WORD_CODE)
         {
             auto string_code = relocated_data;
@@ -7478,6 +7499,7 @@ void COMPILER::LoadByteCodeFromCache(storm::script_cache::BufferReader &reader, 
             const auto real_function_code = FuncTab.FindFunc(functions[relocated_data]);
             relocated_data = real_function_code;
         }
+        WriteUnaligned(const_cast<char *>(&pRunCodeBase[TLR_DataOffset]), relocated_data);
     } while (token_type != END_OF_PROGRAMM);
 }
 
@@ -7576,7 +7598,7 @@ void COMPILER::SaveByteCodeToCache(storm::script_cache::BufferWriter &writer, co
     do
     {
         token_type = BC_TokenGet();
-        auto &relocated_data = *reinterpret_cast<const uint32_t *>(&pRunCodeBase[TLR_DataOffset]);
+        const auto relocated_data = ReadUnaligned<uint32_t>(&pRunCodeBase[TLR_DataOffset]);
 
         if (token_type == ACCESS_WORD_CODE)
         {
