@@ -891,9 +891,33 @@ bool COMPILER::BC_LoadSegment(const char *file_name)
     // Trace("Loading segment: %s", file_name);
 
     // check for already loaded
+    //
+    // A segment that has been unloaded is NOT still loaded. The
+    // game's own scripts use the pattern
+    //
+    //   if (LoadSegment("Encounters\\Encounters_init.c"))
+    //   {
+    //       InitEncounters();
+    //       UnloadSegment("Encounters\\Encounters_init.c");
+    //   }
+    //
+    // so a segment is loaded, used, and unloaded, and then loaded
+    // again the next time the script runs. The unload marks the
+    // segment for removal and the removal happens in ProcessFrame,
+    // but ProcessFrame only runs on the engine's frame, which may be
+    // many calls later.
+    //
+    // Without this, the second LoadSegment finds the name still in
+    // the table, refuses to load the segment again, and the function
+    // the segment defined stays invalidated. Every call to it then
+    // fails with "Invalid function call", because the engine's
+    // BC_CallFunction finds the function's offset is invalid.
+    //
+    // So a segment that is marked for unload is treated as not
+    // loaded, and it is loaded again.
     for (n = 0; n < SegmentsNum; n++)
     {
-        if (strcmp(SegmentTable[n].name.c_str(), file_name) == 0)
+        if (strcmp(SegmentTable[n].name.c_str(), file_name) == 0 && !SegmentTable[n].bUnload)
         {
             SetWarning("Segment already loaded: %s", file_name);
             return true;
