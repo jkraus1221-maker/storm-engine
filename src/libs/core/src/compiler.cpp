@@ -236,6 +236,13 @@ char *COMPILER::LoadFile(const char *file_name, uint32_t &file_size, bool bFullP
             strcpy_s(buffer, ExePath.c_str());
             strcat_s(buffer, file_name + EngineDir.length());
         }
+        else if (std::filesystem::path(file_name).is_absolute())
+        {
+            // An absolute path is used as it is. Without this, an
+            // absolute file name is appended to the program directory
+            // and the file is not found.
+            strcpy_s(buffer, file_name);
+        }
         else if (ProgramDirectory)
         {
             strcpy_s(buffer, ProgramDirectory);
