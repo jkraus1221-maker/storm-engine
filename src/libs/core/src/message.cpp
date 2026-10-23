@@ -1,10 +1,29 @@
 #pragma once
 
+#include <cstdio>
 #include "message.h"
 
 #include <algorithm>
 
 #include <fmt/format.h>
+
+// Read one parameter, tolerating a type mismatch.
+//
+// The scripts can send an entity a message whose format does not match
+// what the receiver expects - a message aimed at a class this engine
+// does not have arrives with whatever format the caller used. std::get
+// throws bad_variant_access on that, and an uncaught throw ends the
+// program. A mismatched parameter now reports and yields a default, so
+// one bad message costs a warning instead of the process.
+template <typename T>
+static T message_param(const storm::MessageParam &value)
+{
+    if (auto *const typed = std::get_if<T>(&value))
+        return *typed;
+    std::fprintf(stderr, "message: parameter type does not match the receiver; using a default\n");
+    return T{};
+}
+
 
 void MESSAGE::Move2Start()
 {
@@ -14,73 +33,73 @@ void MESSAGE::Move2Start()
 uint8_t MESSAGE::Byte()
 {
     ValidateFormat('b');
-    return get<uint8_t>(params_[index - 1]);
+    return message_param<uint8_t>(params_[index - 1]);
 }
 
 uint16_t MESSAGE::Word()
 {
     ValidateFormat('w');
-    return get<uint16_t>(params_[index - 1]);
+    return message_param<uint16_t>(params_[index - 1]);
 }
 
 int32_t MESSAGE::Long()
 {
     ValidateFormat('l');
-    return get<int32_t>(params_[index - 1]);
+    return message_param<int32_t>(params_[index - 1]);
 }
 
 int32_t MESSAGE::Dword()
 {
     ValidateFormat('u');
-    return static_cast<int32_t>(get<uint32_t>(params_[index - 1]));
+    return static_cast<int32_t>(message_param<uint32_t>(params_[index - 1]));
 }
 
 float MESSAGE::Float()
 {
     ValidateFormat('f');
-    return get<float>(params_[index - 1]);
+    return message_param<float>(params_[index - 1]);
 }
 
 double MESSAGE::Double()
 {
     ValidateFormat('d');
-    return get<double>(params_[index - 1]);
+    return message_param<double>(params_[index - 1]);
 }
 
 uintptr_t MESSAGE::Pointer()
 {
     ValidateFormat('p');
-    return static_cast<uintptr_t>(get<entid_t>(params_[index - 1]));
+    return static_cast<uintptr_t>(message_param<entid_t>(params_[index - 1]));
 }
 
 ATTRIBUTES * MESSAGE::AttributePointer()
 {
     ValidateFormat('a');
-    return get<ATTRIBUTES *>(params_[index - 1]);
+    return message_param<ATTRIBUTES *>(params_[index - 1]);
 }
 
 entid_t MESSAGE::EntityID()
 {
     ValidateFormat('i');
-    return get<entid_t>(params_[index - 1]);
+    return message_param<entid_t>(params_[index - 1]);
 }
 
 VDATA * MESSAGE::ScriptVariablePointer()
 {
     ValidateFormat('e');
-    return get<VDATA *>(params_[index - 1]);
+    return message_param<VDATA *>(params_[index - 1]);
 }
 
 CVECTOR MESSAGE::CVector()
 {
     ValidateFormat('c');
-    return get<CVECTOR>(params_[index - 1]);
+    return message_param<CVECTOR>(params_[index - 1]);
 }
 
 const std::string & MESSAGE::String()
 {
     ValidateFormat('s');
-    return get<std::string>(params_[index - 1]);
+    return message_param<std::string>(params_[index - 1]);
 }
 
 bool MESSAGE::Set(int32_t value)
@@ -135,9 +154,23 @@ bool MESSAGE::Set(ATTRIBUTES *value)
 void MESSAGE::ValidateFormat(char c)
 {
     if (format_.empty())
-        throw std::runtime_error("Read from empty message");
+    {
+        // An entity reading a message that was never set up. The
+        // scripts can cause this - a message sent to a class this
+        // engine does not have arrives with a format the receiver does
+        // not expect - and throwing ends the whole program.
+        std::fprintf(stderr, "message: read from an empty message\n");
+        return;
+    }
     if (format_[index] != c)
-        throw std::runtime_error("Incorrect message data");
+    {
+        std::fprintf(stderr,
+                     "message: format mismatch, the message says '%c' and the receiver wanted '%c'"
+                     " (format '%s', at %u)\n",
+                     format_[index], c, format_.c_str(), static_cast<unsigned>(index));
+        index++;
+        return;
+    }
     index++;
 }
 

@@ -1,4 +1,6 @@
 #include "core_impl.h"
+#include <cstdio>
+#include <cstdlib>
 
 #include "compiler.h"
 #include "controls.h"
@@ -65,6 +67,8 @@ typedef struct
 
 void CoreImpl::ResetCore()
 {
+    if (std::getenv("POTC_TRACE_CONTROLS"))
+        std::fprintf(stderr, "CTRL: ResetCore() (Controls was %p)\n", (void *)Controls);
     Initialized = false;
     bEngineIniProcessed = false;
 
@@ -77,6 +81,8 @@ void CoreImpl::ResetCore()
 
 void CoreImpl::CleanUp()
 {
+    if (std::getenv("POTC_TRACE_CONTROLS"))
+        std::fprintf(stderr, "CTRL: CleanUp() (Controls was %p)\n", (void *)Controls);
     Initialized = false;
     bEngineIniProcessed = false;
     ReleaseServices();
@@ -93,6 +99,8 @@ void CoreImpl::SetWindow(std::shared_ptr<storm::OSWindow> window)
 
 void CoreImpl::Init()
 {
+    if (std::getenv("POTC_TRACE_CONTROLS"))
+        std::fprintf(stderr, "CTRL: Init() is clearing Controls (was %p)\n", (void *)Controls);
     Initialized = false;
     bEngineIniProcessed = false;
     State_file_name = nullptr;
@@ -270,19 +278,53 @@ void CoreImpl::ProcessEngineIniFile()
         core_internal.Controls = static_cast<CONTROLS *>(MakeClass(String));
         if (core_internal.Controls == nullptr)
             core_internal.Controls = static_cast<CONTROLS *>(MakeClass("controls"));
+        Controls_owned = true;
     }
     else
     {
-        delete Controls;
-        Controls = nullptr;
-
-        core_internal.Controls = new CONTROLS;
+        // The engine only replaces a Controls it made itself.
+        //
+        // A host may hand the engine its own CONTROLS - the native Mac
+        // port gives it a pointer to a member of its host object:
+        //
+        //   main.mm
+        //       core_internal.Controls = &controls_;
+        //
+        // and this block ran on the engine's FIRST frame, after the host
+        // had already installed that pointer:
+        //
+        //   delete Controls;
+        //   Controls = nullptr;
+        //   core_internal.Controls = new CONTROLS;
+        //
+        // delete on a pointer the engine did not allocate is undefined
+        // behaviour. It corrupted the heap at the start of frame 0, and
+        // the port's run faulted soon after, in MapControl, on a null
+        // Controls.
+        if (Controls == nullptr)
+        {
+            core_internal.Controls = new CONTROLS;
+            Controls_owned = true;
+        }
     }
 
     loadCompatibilitySettings(*engine_ini);
 
     res = engine_ini->ReadString(nullptr, "run", String, sizeof(String), "");
-    if (res)
+    if (res && bHostRunsProgram)
+    {
+        // The host runs the program itself. Letting the engine do it
+        // too compiles seadogs.c a SECOND time, and CreateProgram
+        // resets the script's variable table - so every array the game
+        // had filled was thrown away mid-startup:
+        //
+        //   RUNTIME ERROR in ITEMS\itemLogic.c(353): no rAP data
+        //   RUNTIME ERROR in ITEMS\itemLogic.c(353): missed attribute: id
+        //
+        // 59,019 times each, then a fault.
+        std::fprintf(stderr, "engine: the host runs '%s'; not compiling it again\n", String);
+    }
+    else if (res)
     {
         if (!Compiler->CreateProgram(String))
             throw std::runtime_error("fail to create program");
@@ -456,11 +498,25 @@ void *CoreImpl::MakeClass(const char *class_name)
 
 void CoreImpl::ReleaseServices()
 {
+    if (std::getenv("POTC_TRACE_CONTROLS"))
+        std::fprintf(stderr, "CTRL: ReleaseServices() (Controls was %p, owned=%d)\n",
+                     (void *)Controls, Controls_owned ? 1 : 0);
     for (auto *const c : __STORM_CLASSES_REGISTRY)
         if (c->Service())
             c->Clear();
 
-    Controls = nullptr;
+    // Only a Controls the engine made is cleared here.
+    //
+    // A host installs its own - the native Mac port hands over a
+    // pointer to a member of its host object - and the engine resets
+    // its core on the first frame, which runs through here. Clearing
+    // the host's pointer left the script calling MapControl against a
+    // null and faulting.
+    if (Controls_owned)
+    {
+        Controls = nullptr;
+        Controls_owned = false;
+    }
 }
 
 VMA *CoreImpl::FindVMA(const char *class_name)

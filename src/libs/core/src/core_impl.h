@@ -150,6 +150,10 @@ class CoreImpl final : public CorePrivate
 
     bool Exit_flag; // true if the program closing
 
+    // The host compiles and runs the program itself, so the engine
+    // must not do it again from engine.ini's "run" key.
+    void SetHostRunsProgram(bool value) { bHostRunsProgram = value; }
+
 private:
     void loadCompatibilitySettings(INIFILE &inifile);
 
@@ -164,6 +168,22 @@ private:
     bool Root_flag;
     bool Initialized; // initialized flag (false at startup or after Reset())
     bool bEngineIniProcessed;
+    // Whether the engine created Controls itself. A host may install
+    // its own, and the engine must not clear a pointer it did not make.
+    bool Controls_owned = false;
+
+    // Whether the host compiles and runs the program itself.
+    //
+    // engine.ini names the entry script:
+    //
+    //   program_directory = PROGRAM
+    //   run = seadogs.c
+    //
+    // and ProcessEngineIniFile compiles and runs it. A host that does
+    // that itself - the native Mac port does, so it can register the
+    // game's natives between compiling and running - sets this, and
+    // the engine leaves the program alone.
+    bool bHostRunsProgram = false;
     std::shared_ptr<storm::OSWindow> window_; // application handle
     char gstring[MAX_PATH]{}; // general purpose string
     bool State_loading;

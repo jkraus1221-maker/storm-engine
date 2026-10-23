@@ -740,7 +740,36 @@ VDATA *COMPILER::ProcessEvent(const char *event_name)
     event_code = EventTab.FindEvent(event_name);
     if (event_code == INVALID_EVENT_CODE)
         return nullptr; // no handlers
-    EventTab.GetEvent(ei, event_code);
+    if (!EventTab.GetEvent(ei, event_code))
+        return nullptr;
+
+    // An event can carry a count with no handler array.
+    //
+    // The game registers a handler and raises the event at once:
+    //
+    //   PROGRAM/INTERFACE/interface.c(261)
+    //       SetEventHandler("makescrshot","LaunchMainMenuContinue",0);
+    //       ...
+    //       Event("makescrshot");
+    //
+    // and this loop indexed ei.pFuncInfo[n] without checking it. When
+    // the handler array is null and the count is not, that is a null
+    // dereference and the process dies - which is what the crash report
+    // showed, a fault at address 0 inside ProcessEvent, reached from
+    // the Event native:
+    //
+    //   COMPILER::ProcessEvent
+    //   COMPILER::BC_CallIntFunction
+    //   COMPILER::BC_CallFunction
+    //
+    if (ei.pFuncInfo.empty() || ei.elements == 0)
+    {
+        SetError("event '%s' has no handlers", event_name);
+        return nullptr;
+    }
+    if (ei.elements > ei.pFuncInfo.size())
+        ei.elements = static_cast<uint32_t>(ei.pFuncInfo.size());
+
     for (uint32_t n = 0; n < ei.elements; n++)
     {
         func_code = ei.pFuncInfo[n].func_code;
@@ -809,8 +838,20 @@ VDATA *COMPILER::ProcessEvent(const char *event_name)
 
     RDTSC_E(dwRDTSC);
 
-    // VANO CHANGES - remove in release
-    if (core_internal.Controls->GetDebugAsyncKeyState('5') < 0 &&
+    // A debug trace, guarded.
+    //
+    // This runs at the end of EVERY event the script raises, and it
+    // dereferenced Controls without checking. Controls is null
+    // whenever the engine has reset its core and the host has not yet
+    // put its own back, so the first Event() call after a reset died at
+    // address 0, inside this function:
+    //
+    //   COMPILER::ProcessEvent
+    //   COMPILER::BC_CallIntFunction
+    //   COMPILER::BC_CallFunction
+    //
+    if (core_internal.Controls != nullptr &&
+        core_internal.Controls->GetDebugAsyncKeyState('5') < 0 &&
         core_internal.Controls->GetDebugAsyncKeyState(VK_SHIFT) < 0)
     {
         core_internal.Trace("evnt: %d, %s", dwRDTSC, event_name);
@@ -3726,6 +3767,13 @@ bool COMPILER::BC_CallFunction(uint32_t func_code, uint32_t &ip, DATA *&pVResult
     // push function details to call stack
     storm::ringbuffer_stack_push_guard push_guard(callStack_);
     push_guard.push(std::make_tuple(call_fi.decl_file_name.c_str(), call_fi.decl_line, call_fi.name.c_str()));
+
+    // Script-level tracing. The internal-function trace shows the
+    // natives; this shows the game's own function calls, and the last
+    // one entered before a fault is the one that faulted.
+    if (std::getenv("POTC_TRACE_SCRIPT"))
+        std::fprintf(stderr, "SCRIPT: %s (%s:%u)\n", call_fi.name.c_str(),
+                     call_fi.decl_file_name.c_str(), call_fi.decl_line);
 
     // number f arguments pushed into stack for this function call
     if (BC_TokenGet() != ARGS_NUM)

@@ -1,4 +1,6 @@
 ﻿#include "entity_manager.h"
+#include <cstdio>
+#include <set>
 
 #include <algorithm>
 #include <cassert>
@@ -127,7 +129,26 @@ entid_t EntityManager::CreateEntity(const char *name, ATTRIBUTES *attr)
     }
     if (pClass == nullptr)
     {
-        throw std::runtime_error(std::string("invalid entity name: ") + name);
+        // The original engine returned 0 for a class it did not have,
+        // and the game's own scripts check the result:
+        //
+        //   PROGRAM/INTERFACE/interface.c(268)
+        //       CreateEntity(&scrshoter,"scrshoter");
+        //       if(!IsEntity(scrshoter)) PostEvent("makescrshot",1);
+        //
+        // Throwing here kills the whole program instead. The game asks
+        // for classes this port does not implement - CAviPlayer, the
+        // AVI video player, among them - and the run ended on the
+        // first one it met:
+        //
+        //   Native port: invalid entity name: CAviPlayer
+        //
+        // So an unknown class is reported once and yields 0, which is
+        // what the scripts are written against.
+        static std::set<std::string> reported;
+        if (reported.insert(name).second)
+            std::fprintf(stderr, "engine: no such entity class '%s'; the script gets 0\n", name);
+        return 0;
     }
 
     // Create entity
