@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include <zlib.h>
@@ -875,6 +876,7 @@ bool COMPILER::BC_SegmentIsLoaded(const char *file_name)
         SetError("Invalid segment name");
         return false;
     }
+
     for (uint32_t n = 0; n < SegmentsNum; n++)
     {
         if (strcmp(SegmentTable[n].name.c_str(), file_name) == 0)
@@ -886,6 +888,9 @@ bool COMPILER::BC_SegmentIsLoaded(const char *file_name)
 bool COMPILER::BC_LoadSegment(const char *file_name)
 {
     uint32_t n;
+
+    if (std::getenv("POTC_TRACE_SEGMENTS"))
+        std::fprintf(stderr, "SEGASK: '%s'\n", file_name ? file_name : "(null)");
 
     LabelUpdateTable.Release();
 
@@ -1006,6 +1011,9 @@ bool COMPILER::BC_LoadSegment(const char *file_name)
         EventTab.InvalidateBySegmentID(id);
         DefTab.InvalidateBySegmentID(id);
     }
+    if (std::getenv("POTC_TRACE_SEGMENTS"))
+        std::fprintf(stderr, "SEGLOAD: '%s' -> %s (segments=%u)\n",
+                     file_name, result ? "loaded" : "FAILED", SegmentsNum);
     return result;
 }
 
