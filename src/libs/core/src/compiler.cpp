@@ -782,6 +782,15 @@ VDATA *COMPILER::ProcessEvent(const char *event_name)
         }
 
         const uint32_t nStackVars = SStack.GetDataNum(); // remember stack elements num
+        if (std::getenv("POTC_TRACE_EVENTS"))
+        {
+            FuncInfo handler;
+            if (FuncTab.GetFuncX(handler, ei.pFuncInfo[n].func_code))
+                std::fprintf(stderr, "EVENT: '%s' -> %s (%s:%u)\n", event_name,
+                             handler.name.c_str(), handler.decl_file_name.c_str(), handler.decl_line);
+            else
+                std::fprintf(stderr, "EVENT: '%s' -> an unknown function\n", event_name);
+        }
         RDTSC_B(nTicks);
         BC_Execute(ei.pFuncInfo[n].func_code, pResult);
         RDTSC_E(nTicks);
@@ -3400,6 +3409,15 @@ bool COMPILER::CompileBlock(SEGMENT_DESC &Segment, bool &bFunctionBlock, uint32_
                 if(TokenType()!= SQUARE_CLOSE_BRACKET){ SetError("missed ']'"); return false; }
                 BC_TokenGet();
                 pVar = (DATA *)pVar->GetArrayElement(array_index);
+                // GetArrayElement yields null for an index out of range,
+                // and the reference is then set from it. A bad index -
+                // Locations[FindLocation("Labirint_3")] when that
+                // location is not in the array - reaches here.
+                if (pVar == nullptr)
+                {
+                    pRef->SetReference(nullptr);
+                    break;
+                }
               }
               pRef->SetReference(pVar->GetVarPointer());
               if(TokenType() != CLOSE_BRACKET) {SetError("missed ')'"); return false;};
