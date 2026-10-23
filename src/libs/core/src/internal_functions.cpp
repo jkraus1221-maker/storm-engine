@@ -4,6 +4,8 @@
 #include "legacy_layers.hpp"
 
 #include <execution>
+#include <cstdlib>
+#include <cstdio>
 
 #define INVALID_FA "Invalid function argument"
 #define BAD_FA "Bad function argument"
@@ -407,6 +409,11 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
 
     if (func_code >= functions_num)
         return nullptr;
+
+    // A trace of every internal function the scripts call, in order.
+    // The last one printed before a crash is the one that faulted.
+    if (std::getenv("POTC_TRACE_CALLS"))
+        std::fprintf(stderr, "CALL: %s(%u)\n", IntFuncTable[func_code].pName, arguments);
 
     DATA *pResult;
     DATA *pV;
@@ -850,13 +857,16 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         break;
 
     case FUNC_MAP_CONTROL:
+        if (std::getenv("POTC_TRACE_CALLS")) std::fprintf(stderr, "MAPCTRL: pop 1\n");
         pV2 = SStack.Pop();
         if (!pV2)
         {
             SetError(INVALID_FA);
             break;
         }
+        if (std::getenv("POTC_TRACE_CALLS")) std::fprintf(stderr, "MAPCTRL: get 1\n");
         pV2->Get(TempLong1);
+        if (std::getenv("POTC_TRACE_CALLS")) std::fprintf(stderr, "MAPCTRL: pop 2 (value=%d)\n", TempLong1);
 
         pV = SStack.Pop();
         if (!pV)
@@ -864,9 +874,17 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
             SetError(INVALID_FA);
             break;
         }
+        if (std::getenv("POTC_TRACE_CALLS")) std::fprintf(stderr, "MAPCTRL: get 2\n");
         pV->Get(TempLong2);
+        if (std::getenv("POTC_TRACE_CALLS")) std::fprintf(stderr, "MAPCTRL: call(%d,%d) controls=%p\n", TempLong2, TempLong1, (void*)core_internal.Controls);
 
-        core_internal.Controls->MapControl(TempLong2, TempLong1);
+        // Controls can be null - it is cleared when the engine
+        // re-initialises, and the game keeps calling these natives
+        // afterwards. CreateControl has always checked; the rest did
+        // not, and MapControl faulted on a null dereference.
+        if (core_internal.Controls != nullptr)
+            core_internal.Controls->MapControl(TempLong2, TempLong1);
+        if (std::getenv("POTC_TRACE_CALLS")) std::fprintf(stderr, "MAPCTRL: returned\n");
         break;
 
     case FUNC_SET_CONTROL_TRESHOLD:
@@ -886,7 +904,12 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         }
         pV->Get(TempLong2);
 
-        core_internal.Controls->SetControlTreshold(TempLong2, TempFloat1);
+        // Controls can be null - it is cleared when the engine
+        // re-initialises, and the game keeps calling these natives
+        // afterwards. CreateControl has always checked; the rest did
+        // not, and MapControl faulted on a null dereference.
+        if (core_internal.Controls != nullptr)
+            core_internal.Controls->SetControlTreshold(TempLong2, TempFloat1);
 
         break;
 
@@ -907,7 +930,12 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
         }
         pV->Get(TempLong2);
 
-        core_internal.Controls->SetControlFlags(TempLong2, TempLong1);
+        // Controls can be null - it is cleared when the engine
+        // re-initialises, and the game keeps calling these natives
+        // afterwards. CreateControl has always checked; the rest did
+        // not, and MapControl faulted on a null dereference.
+        if (core_internal.Controls != nullptr)
+            core_internal.Controls->SetControlFlags(TempLong2, TempLong1);
         break;
 
     case FUNC_DELETEENTITIESBYTYPE:
@@ -2570,6 +2598,8 @@ DATA *COMPILER::BC_CallIntFunction(uint32_t func_code, DATA *&pVResult, uint32_t
 
         break;
     }
+    if (std::getenv("POTC_TRACE_CALLS"))
+        std::fprintf(stderr, "CALLEND: %s\n", IntFuncTable[func_code].pName);
     return nullptr;
 }
 
